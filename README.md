@@ -1,1 +1,1 @@
-# benchmarking-segmentation-annotations-in-cv
+# Benchmarking Segmentation Annotations in Computer Vision
