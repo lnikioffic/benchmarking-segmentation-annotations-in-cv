@@ -30,8 +30,8 @@ def compute_boundary_f1(pred, gt, tolerance=1):
     pred, gt = preprocess_mask(pred), preprocess_mask(gt)
 
     # Найти границы
-    pred_bound = find_boundaries(pred, mode='thick').astype(np.uint8)
-    gt_bound = find_boundaries(gt, mode='thick').astype(np.uint8)
+    pred_bound = find_boundaries(pred, mode="thick").astype(np.uint8)
+    gt_bound = find_boundaries(gt, mode="thick").astype(np.uint8)
 
     # Расстояния от границ
     pred_dist = cv2.distanceTransform(1 - pred_bound, cv2.DIST_L2, 0)
@@ -56,28 +56,40 @@ def compute_boundary_f1(pred, gt, tolerance=1):
     return 2 * precision * recall / (precision + recall)
 
 
-def compute_contour_accuracy(pred, gt, metric='hausdorff'):
+def compute_contour_accuracy(pred, gt, metric="hausdorff"):
     """Сравнение контуров через Hausdorff или Chamfer distance."""
     pred, gt = preprocess_mask(pred), preprocess_mask(gt)
 
     # Получить контуры как списки координат
     def mask_to_coords(mask):
-        coords = np.column_stack(np.where(mask))
-        return coords if len(coords) > 0 else np.array([[0, 0]])
+        # Убедимся, что маска имеет правильный тип данных
+        mask = mask.astype(np.uint8)
+
+        # Найти контуры
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+
+        # Если контуры найдены, объединяем их в один массив координат
+        if contours:
+            # Убираем лишние размерности
+            contour = np.vstack(contours).squeeze()
+            return contour
+        else:
+            # Возвращаем пустой массив, если контуров нет
+            return np.empty((0, 2), dtype=np.int32)
 
     pred_coords = mask_to_coords(pred)
     gt_coords = mask_to_coords(gt)
 
-    if metric == 'hausdorff':
+    if metric == "hausdorff":
         # Directed Hausdorff (берём max из двух направлений)
         d1 = directed_hausdorff(pred_coords, gt_coords)[0]
         d2 = directed_hausdorff(gt_coords, pred_coords)[0]
         return max(d1, d2)
-    elif metric == 'chamfer':
+    elif metric == "chamfer":
         # Среднее попарное расстояние (упрощённо)
         from scipy.spatial.distance import cdist
 
-        dist_matrix = cdist(pred_coords, gt_coords, metric='euclidean')
+        dist_matrix = cdist(pred_coords, gt_coords, metric="euclidean")
         chamfer = dist_matrix.min(axis=0).mean() + dist_matrix.min(axis=1).mean()
         return chamfer
     else:
@@ -96,25 +108,39 @@ def get_binary_masks_from_multiclass(multiclass_mask):
     return binary_masks
 
 
-def compute_contour_accuracy_for_pair(pred_binary, gt_binary, metric='hausdorff'):
+def compute_contour_accuracy_for_pair(pred_binary, gt_binary, metric="hausdorff"):
     """Вычислить контурную метрику для одной пары бинарных масок."""
     pred_binary, gt_binary = preprocess_mask(pred_binary), preprocess_mask(gt_binary)
 
     def mask_to_coords(mask):
-        coords = np.column_stack(np.where(mask))
-        return coords if len(coords) > 0 else np.array([[0, 0]])
+        """Преобразует бинарную маску в контур (границу объекта) с использованием OpenCV"""
+
+        # Убедимся, что маска имеет правильный тип данных
+        mask = mask.astype(np.uint8)
+
+        # Найти контуры
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+
+        # Если контуры найдены, объединяем их в один массив координат
+        if contours:
+            # Убираем лишние размерности
+            contour = np.vstack(contours).squeeze()
+            return contour
+        else:
+            # Возвращаем пустой массив, если контуров нет
+            return np.empty((0, 2), dtype=np.int32)
 
     pred_coords = mask_to_coords(pred_binary)
     gt_coords = mask_to_coords(gt_binary)
 
-    if metric == 'hausdorff':
+    if metric == "hausdorff":
         d1 = directed_hausdorff(pred_coords, gt_coords)[0]
         d2 = directed_hausdorff(gt_coords, pred_coords)[0]
         return max(d1, d2)
-    elif metric == 'chamfer':
+    elif metric == "chamfer":
         from scipy.spatial.distance import cdist
 
-        dist_matrix = cdist(pred_coords, gt_coords, metric='euclidean')
+        dist_matrix = cdist(pred_coords, gt_coords, metric="euclidean")
         chamfer = dist_matrix.min(axis=0).mean() + dist_matrix.min(axis=1).mean()
         return chamfer
     else:
@@ -142,14 +168,14 @@ def match_objects_by_iou(pred_masks, gt_masks, iou_threshold=0.1):
 
 
 def compute_overall_contour_accuracy(
-    pred_multiclass, gt_multiclass, metric='hausdorff'
+    pred_multiclass, gt_multiclass, metric="hausdorff"
 ):
     """Вычислить среднее контурное расстояние для всех сопоставленных объектов."""
     pred_binary_list = get_binary_masks_from_multiclass(pred_multiclass)
     gt_binary_list = get_binary_masks_from_multiclass(gt_multiclass)
 
     if not pred_binary_list or not gt_binary_list:
-        return float('inf')  # или 0, если нет объектов
+        return float("inf")  # или 0, если нет объектов
 
     matches = match_objects_by_iou(pred_binary_list, gt_binary_list)
 
