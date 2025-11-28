@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 from PIL import Image
 
+from contour_detector import get_filtered_bboxes, get_filtered_bboxes_xywh
 from images_eval import (
     compute_boundary_f1,
     compute_contour_accuracy,
@@ -21,13 +22,16 @@ def mask_segmentation(img) -> np.ndarray:
 
 
 def main():
-    mask = np.array(Image.open("images/00000.png"))
-    print(np.unique(mask))
-    gt_mask = np.array(cv2.imread("images/00000.png"))
-    print(np.unique(gt_mask))
+    # mask = np.array(Image.open("images/00000.png"))
+    # print(np.unique(mask))
+    # gt_mask = np.array(cv2.imread("images/00000.png"))
+    # print(np.unique(gt_mask))
 
     img = np.array(cv2.imread("images/00000.png"))  # BGR
     mask_segmentation(img)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    print(get_filtered_bboxes_xywh(gray, min_area_ratio=0.001))
+    print(get_filtered_bboxes(gray, min_area_ratio=0.001))
 
     gt_mask = mask_segmentation(np.array(cv2.imread("images/cats_rac_test.png")))
     pred_mask = mask_segmentation(np.array(cv2.imread("images/cats_rac_sam.png")))
