@@ -64,8 +64,22 @@ def read_dataset(select_name=None):
     return data
 
 
+def get_coordinates(org_mask):
+    seg_mask = mask_segmentation(org_mask)
+    map = mask_map(seg_mask)
+    coords = []
+    for obj in map:
+        m = cv2.cvtColor(obj, cv2.COLOR_BGR2GRAY)
+        print("get_coord")
+        print(get_filtered_bboxes(m, min_area_ratio=0.001))
+        coords.extend(get_filtered_bboxes(m, min_area_ratio=0.001))
+    
+    print(coords)
+    
+
 def main():
     dataest = read_dataset("bear")
+    
     # mask = np.array(Image.open("images/00000.png"))
     # print(np.unique(mask))
     # gt_mask = np.array(cv2.imread("images/00000.png"))
@@ -73,7 +87,7 @@ def main():
     i = np.array(cv2.imread("00000.png"))
     im = mask_segmentation(i)
     gray = cv2.cvtColor(i, cv2.COLOR_BGR2GRAY)
-    print(get_filtered_bboxes_xywh(gray, min_area_ratio=0.001))
+    get_coordinates(i)
     print(len(mask_map(im)))
     im = painter_borders(i, gray)
     cv2.imshow("imgg", im)
@@ -81,38 +95,45 @@ def main():
     img_mask = np.array(cv2.imread("images/00000.png"))  # BGR
     mask_segmentation(img_mask)
     gray = cv2.cvtColor(img_mask, cv2.COLOR_BGR2GRAY)
-    print(get_filtered_bboxes_xywh(gray, min_area_ratio=0.001))
     print(get_filtered_bboxes(gray, min_area_ratio=0.001))
     box = get_filtered_bboxes(gray, min_area_ratio=0.001)
+    
+    print("box", box)
+    # image = np.array(cv2.imread("images/00000.jpg"))
+    # im = painter_borders(image, gray)
+    # cv2.imshow("img", im)
+    # segmenter = Segmenter()
+    # segmenter.set_image(image)
 
-    image = np.array(cv2.imread("images/00000.jpg"))
-    im = painter_borders(image, gray)
-    cv2.imshow("img", im)
-    segmenter = Segmenter()
-    segmenter.set_image(image)
+    # prompt = {
+    #     "boxes": np.array(box),
+    # }
+    # maskss = []
+    # masks, scores, logits = segmenter.predict(prompt, mode="box")
+    # maskss.append(masks[np.argmax(scores)])
 
-    prompt = {
-        "boxes": np.array(box),
-    }
-    maskss = []
-    masks, scores, logits = segmenter.predict(prompt, mode="box")
-    maskss.append(masks[np.argmax(scores)])
+    # mask, unique_mask = merge_masks(maskss)
 
-    mask, unique_mask = merge_masks(maskss)
+    # mask_indices, colors = extract_color_regions(unique_mask)
+    # print("Классы:", np.unique(mask_indices))
 
-    mask_indices, colors = extract_color_regions(unique_mask)
-    print("Классы:", np.unique(mask_indices))
-
-    f = overlay_davis(image, mask_indices)
-    f = cv2.cvtColor(f, cv2.COLOR_BGR2RGB)
-    mask = visualize_unique_mask(mask_indices)
-    cv2.imshow("mask", mask)
-    cv2.imshow("overlay", f)
+    # f = overlay_davis(image, mask_indices)
+    # f = cv2.cvtColor(f, cv2.COLOR_BGR2RGB)
+    # mask = visualize_unique_mask(mask_indices)
+    # cv2.imshow("mask", mask)
+    # cv2.imshow("overlay", f)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
     mask = np.array(cv2.imread("images/cats_rac_test.png"))
+    print("Кошки ориг")
+    get_coordinates(mask) # есть определённый порядок
+    c_mask = np.array(cv2.imread("images/cats_rac_sam.png"))
+    print("Кошки сам")
+    get_coordinates(c_mask)
+    print("----------")
     gray = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
+    
     # Последним идёт самая задняя кошка
     for m in mask_map(gray):
         # print(get_filtered_bboxes_xywh(m, min_area_ratio=0.001))
