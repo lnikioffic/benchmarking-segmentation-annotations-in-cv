@@ -3,6 +3,7 @@ import os
 import cv2
 import numpy as np
 from PIL import Image
+from tqdm import tqdm
 
 from images_eval import (
     compute_boundary_f1,
@@ -11,6 +12,7 @@ from images_eval import (
     compute_overall_contour_accuracy,
 )
 from segmenter import Segmenter
+from tracker_core_xmem2 import TrackerCore
 from utils.contour_detector import (
     get_filtered_bboxes,
     get_filtered_bboxes_xywh,
@@ -70,20 +72,72 @@ def get_coordinates(org_mask):
     coords = []
     for obj in map:
         m = cv2.cvtColor(obj, cv2.COLOR_BGR2GRAY)
-        print("get_coord")
-        print(get_filtered_bboxes(m, min_area_ratio=0.001))
         coords.extend(get_filtered_bboxes(m, min_area_ratio=0.001))
-    
+
     print(coords)
-    
+    return coords
+
+
+def segmentation(image, coords):
+    segmenter = Segmenter()
+    segmenter.set_image(image)
+    mask_objects = []
+    for coord in coords:
+        prompt = {"boxes": np.array([coord])}
+        masks, scores, logits = segmenter.predict(prompt, "box", True)
+        mask_objects.append(masks[np.argmax(scores)])
+
+    mask, unique_mask = merge_masks(mask_objects)
+    mask_indices = mask_segmentation(unique_mask)
+    return mask_indices
+
+
+def tracker(folder: list, mask):
+    tracker_core = TrackerCore()
+    masks = []
+    for i in tqdm(range(len(folder)), desc="Tracking"):
+        image = np.array(cv2.imread(folder[i][0]))
+        if i == 0:
+            mask = tracker_core.track(
+                image,
+                mask,
+            )
+            masks.append(mask)
+        else:
+            mask = tracker_core.track(image)
+            masks.append(mask)
+    return masks
+
 
 def main():
-    dataest = read_dataset("bear")
-    
+    dataset = read_dataset("bear")
+    for folder in dataset:
+        image_path, mask_path = folder[0]
+        mask = np.array(cv2.imread(mask_path))
+        coords = get_coordinates(mask)
+        image = np.array(cv2.imread(image_path))
+        segmentation_mask = segmentation(image, coords)
+        assert len(np.unique(segmentation_mask)) == len(
+            np.unique(mask_segmentation(mask))
+        )
+
+        miou = compute_miou(segmentation_mask, mask)
+        bf = compute_boundary_f1(segmentation_mask, mask)
+        hausdorff = compute_contour_accuracy(
+            segmentation_mask, mask, metric="hausdorff"
+        )
+        chamfer = compute_contour_accuracy(segmentation_mask, mask, metric="chamfer")
+        print(f"mIoU: {miou:.4f}")
+        print(f"Boundary F1: {bf:.4f}")
+        print(f"Hausdorff distance: {hausdorff:.2f}")
+        print(f"Chamfer distance: {chamfer:.2f}")
+        masks = tracker(folder, segmentation_mask)
+        print(len(masks))
     # mask = np.array(Image.open("images/00000.png"))
     # print(np.unique(mask))
     # gt_mask = np.array(cv2.imread("images/00000.png"))
     # print(np.unique(gt_mask))
+    print("-" * 100)
     i = np.array(cv2.imread("00000.png"))
     im = mask_segmentation(i)
     gray = cv2.cvtColor(i, cv2.COLOR_BGR2GRAY)
@@ -97,7 +151,7 @@ def main():
     gray = cv2.cvtColor(img_mask, cv2.COLOR_BGR2GRAY)
     print(get_filtered_bboxes(gray, min_area_ratio=0.001))
     box = get_filtered_bboxes(gray, min_area_ratio=0.001)
-    
+
     print("box", box)
     # image = np.array(cv2.imread("images/00000.jpg"))
     # im = painter_borders(image, gray)
@@ -127,13 +181,13 @@ def main():
 
     mask = np.array(cv2.imread("images/cats_rac_test.png"))
     print("Кошки ориг")
-    get_coordinates(mask) # есть определённый порядок
+    get_coordinates(mask)  # есть определённый порядок
     c_mask = np.array(cv2.imread("images/cats_rac_sam.png"))
     print("Кошки сам")
     get_coordinates(c_mask)
     print("----------")
     gray = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
-    
+
     # Последним идёт самая задняя кошка
     for m in mask_map(gray):
         # print(get_filtered_bboxes_xywh(m, min_area_ratio=0.001))

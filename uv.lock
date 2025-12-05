@@ -32,6 +32,7 @@ dependencies = [
     { name = "sam2" },
     { name = "scikit-image" },
     { name = "scipy" },
+    { name = "tqdm" },
 ]
 
 [package.optional-dependencies]
@@ -60,6 +61,7 @@ requires-dist = [
     { name = "torch", marker = "extra == 'cu129'", specifier = "==2.8.0", index = "https://download.pytorch.org/whl/cu129", conflict = { package = "benchmarking-segmentation-annotations-in-cv", extra = "cu129" } },
     { name = "torchvision", marker = "extra == 'cpu'", specifier = "==0.23.0", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "benchmarking-segmentation-annotations-in-cv", extra = "cpu" } },
     { name = "torchvision", marker = "extra == 'cu129'", specifier = "==0.23.0", index = "https://download.pytorch.org/whl/cu129", conflict = { package = "benchmarking-segmentation-annotations-in-cv", extra = "cu129" } },
+    { name = "tqdm", specifier = ">=4.67.1" },
 ]
 provides-extras = ["cpu", "cu129"]
 
