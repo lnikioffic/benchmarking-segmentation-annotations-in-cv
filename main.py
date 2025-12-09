@@ -22,6 +22,7 @@ from utils.converter import extract_color_regions, merge_masks
 from utils.mask_display import (  # потестить mask_map на масках с несколькими объектами и посмотреть порядок потом как сам их показывает должен быть одинаковый и тогда можно смореть с несколькими объектами
     mask_map,
     visualize_unique_mask,
+    visualize_wb_mask,
 )
 from utils.overlay import painter_borders
 from XMem2.inference.interact.interactive_utils import overlay_davis
@@ -40,7 +41,7 @@ def mask_segmentation(img) -> np.ndarray:
     colors, inverse = np.unique(img_rgb.reshape(-1, 3), axis=0, return_inverse=True)
     mask_indices = inverse.reshape(img_rgb.shape[:2])
 
-    print("Классы:", np.unique(mask_indices))
+    # print("Классы:", np.unique(mask_indices))
     return mask_indices
 
 
@@ -110,9 +111,19 @@ def tracker(folder: list, mask):
 
 
 def main():
-    dataset = read_dataset("bear")
+    dataset = read_dataset()
+
+    video_j = []  # IoU scores
+    video_f = []  # Boundary scores
+    video_h = []  # Hausdorff scores
+    video_c = []  # Chamfer scores
+    i = 0
     for folder in dataset:
+        i += 1
+        if i == 3:
+            break
         image_path, mask_path = folder[0]
+        print(image_path)
         mask = np.array(cv2.imread(mask_path))
         coords = get_coordinates(mask)
         image = np.array(cv2.imread(image_path))
@@ -132,7 +143,29 @@ def main():
         print(f"Hausdorff distance: {hausdorff:.2f}")
         print(f"Chamfer distance: {chamfer:.2f}")
         masks = tracker(folder, segmentation_mask)
-        print(len(masks))
+
+        for mask_t, data in zip(masks, folder):
+            cv2.imshow("mask", visualize_wb_mask(mask_t))
+            cv2.waitKey(1)
+            gt_mask = mask_segmentation(np.array(cv2.imread(data[1])))
+            miou = compute_miou(mask_t, gt_mask)
+            bf = compute_boundary_f1(mask_t, gt_mask)
+            hausdorff = compute_contour_accuracy(mask_t, gt_mask, metric="hausdorff")
+            chamfer = compute_contour_accuracy(mask_t, gt_mask, metric="chamfer")
+            video_j.append(miou)
+            video_f.append(bf)
+            video_h.append(hausdorff)
+            video_c.append(chamfer)
+
+    mean_j = np.mean(video_j)
+    mean_f = np.mean(video_f)
+    mean_h = np.mean(video_h)
+    mean_c = np.mean(video_c)
+    print(f"J Mean mIoU: {mean_j:.4f}")
+    print(f"F Mean Boundary F1: {mean_f:.4f}")
+    print(f"J&F {((mean_j + mean_f)/2):.4f}")
+    print(f"Mean Hausdorff distance: {mean_h:.2f}")
+    print(f"Mean Chamfer distance: {mean_c:.2f}")
     # mask = np.array(Image.open("images/00000.png"))
     # print(np.unique(mask))
     # gt_mask = np.array(cv2.imread("images/00000.png"))

@@ -79,7 +79,18 @@ def compute_contour_accuracy(pred, gt, metric="hausdorff"):
 
     pred_coords = mask_to_coords(pred)
     gt_coords = mask_to_coords(gt)
+    
+    pred_empty = len(pred_coords) == 0
+    gt_empty = len(gt_coords) == 0
 
+    if pred_empty and gt_empty:
+        # Оба контура пустые - идеальное совпадение
+        return 0.0
+    elif pred_empty or gt_empty:
+        # Один контур пустой, другой нет - максимальная ошибка
+        # Возвращаем большое число или специфичное значение
+        return float('inf')
+        
     if metric == "hausdorff":
         # Directed Hausdorff (берём max из двух направлений)
         d1 = directed_hausdorff(pred_coords, gt_coords)[0]
