@@ -82,14 +82,16 @@ def compute_contour_accuracy(pred, gt, metric="hausdorff"):
     
     pred_empty = len(pred_coords) == 0
     gt_empty = len(gt_coords) == 0
-
+    
     if pred_empty and gt_empty:
         # Оба контура пустые - идеальное совпадение
         return 0.0
     elif pred_empty or gt_empty:
+        h, w = pred.shape
+        max_distance = np.sqrt(h**2 + w**2)
         # Один контур пустой, другой нет - максимальная ошибка
         # Возвращаем большое число или специфичное значение
-        return float('inf')
+        return max_distance
         
     if metric == "hausdorff":
         # Directed Hausdorff (берём max из двух направлений)

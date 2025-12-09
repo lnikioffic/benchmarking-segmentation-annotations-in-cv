@@ -111,7 +111,7 @@ def tracker(folder: list, mask):
 
 
 def main():
-    dataset = read_dataset()
+    dataset = read_dataset("bmx-bumps")
 
     video_j = []  # IoU scores
     video_f = []  # Boundary scores
