@@ -111,17 +111,18 @@ def tracker(folder: list, mask):
 
 
 def main():
-    dataset = read_dataset("bmx-bumps")
+    dataset = read_dataset("train")
 
+    seg_j = []
+    seg_f = []
+    seg_h = []
+    seg_c = []
     video_j = []  # IoU scores
     video_f = []  # Boundary scores
     video_h = []  # Hausdorff scores
     video_c = []  # Chamfer scores
-    i = 0
+
     for folder in dataset:
-        i += 1
-        if i == 3:
-            break
         image_path, mask_path = folder[0]
         print(image_path)
         mask = np.array(cv2.imread(mask_path))
@@ -131,13 +132,18 @@ def main():
         assert len(np.unique(segmentation_mask)) == len(
             np.unique(mask_segmentation(mask))
         )
-
+        # mask_view = visualize_unique_mask(segmentation_mask)
+        # cv2.imshow("mask1", mask_view)
         miou = compute_miou(segmentation_mask, mask)
         bf = compute_boundary_f1(segmentation_mask, mask)
         hausdorff = compute_contour_accuracy(
             segmentation_mask, mask, metric="hausdorff"
         )
         chamfer = compute_contour_accuracy(segmentation_mask, mask, metric="chamfer")
+        seg_j.append(miou)
+        seg_f.append(bf)
+        seg_h.append(hausdorff)
+        seg_c.append(chamfer)
         print(f"mIoU: {miou:.4f}")
         print(f"Boundary F1: {bf:.4f}")
         print(f"Hausdorff distance: {hausdorff:.2f}")
@@ -161,11 +167,25 @@ def main():
     mean_f = np.mean(video_f)
     mean_h = np.mean(video_h)
     mean_c = np.mean(video_c)
+    print("Tracking")
     print(f"J Mean mIoU: {mean_j:.4f}")
     print(f"F Mean Boundary F1: {mean_f:.4f}")
     print(f"J&F {((mean_j + mean_f)/2):.4f}")
     print(f"Mean Hausdorff distance: {mean_h:.2f}")
     print(f"Mean Chamfer distance: {mean_c:.2f}")
+    
+    print("Segmentation")
+    mean_seg_j = np.mean(seg_j)
+    mean_seg_f = np.mean(seg_f)
+    mean_seg_h = np.mean(seg_h)
+    mean_seg_c = np.mean(seg_c)
+    print(f"J Mean mIoU: {mean_seg_j:.4f}")
+    print(f"F Mean Boundary F1: {mean_seg_f:.4f}")
+    print(f"J&F {((mean_seg_j + mean_seg_f)/2):.4f}")
+    print(f"Mean Hausdorff distance: {mean_seg_h:.2f}")
+    print(f"Mean Chamfer distance: {mean_seg_c:.2f}")
+    
+    
     # mask = np.array(Image.open("images/00000.png"))
     # print(np.unique(mask))
     # gt_mask = np.array(cv2.imread("images/00000.png"))
