@@ -11,6 +11,13 @@ from images_eval import (
     compute_miou,
     compute_overall_contour_accuracy,
 )
+
+# !!! Импорт метрик для рамок
+from frames_eval import (
+    get_box_for_id,
+    BoxEvaluator,
+)
+
 from segmenter import Segmenter
 from tracker_core_xmem2 import TrackerCore
 from utils.contour_detector import (
@@ -122,6 +129,9 @@ def main():
     video_h = []  # Hausdorff scores
     video_c = []  # Chamfer scores
 
+    # Инициализация Evaluator для рамок
+    box_evaluator = BoxEvaluator(iou_threshold=0.5)
+
     for folder in dataset:
         image_path, mask_path = folder[0]
         print(image_path)
@@ -153,59 +163,90 @@ def main():
         for mask_t, data in zip(masks, folder):
             cv2.imshow("mask", visualize_wb_mask(mask_t))
             cv2.waitKey(1)
-            gt_mask = mask_segmentation(np.array(cv2.imread(data[1])))
-            miou = compute_miou(mask_t, gt_mask)
-            bf = compute_boundary_f1(mask_t, gt_mask)
-            hausdorff = compute_contour_accuracy(mask_t, gt_mask, metric="hausdorff")
-            chamfer = compute_contour_accuracy(mask_t, gt_mask, metric="chamfer")
-            video_j.append(miou)
-            video_f.append(bf)
-            video_h.append(hausdorff)
-            video_c.append(chamfer)
 
+            gt_img_raw = np.array(cv2.imread(data[1]))
+            gt_mask = mask_segmentation(gt_img_raw)
+
+            # 1. Метрики Масок
+            video_j.append(compute_miou(mask_t, gt_mask))
+            video_f.append(compute_boundary_f1(mask_t, gt_mask))
+            video_h.append(
+                compute_contour_accuracy(mask_t, gt_mask, metric="hausdorff")
+            )
+            video_c.append(compute_contour_accuracy(mask_t, gt_mask, metric="chamfer"))
+
+            # 2. Метрики Рамок (Сравнение по ID объектов)
+            gt_ids = np.unique(gt_mask)
+            gt_ids = gt_ids[gt_ids != 0]  # Исключаем фон
+
+            pred_ids = np.unique(mask_t)
+            pred_ids = pred_ids[pred_ids != 0]  # Исключаем фон
+
+            all_ids = set(gt_ids) | set(pred_ids)
+
+            for obj_id in all_ids:
+                gt_box = get_box_for_id(gt_mask, obj_id)
+                pred_box = get_box_for_id(mask_t, obj_id)
+
+                # Обновляем статистику через Evaluator
+                box_evaluator.update(pred_box, gt_box)
+
+    # --- Подсчет финальных метрик рамок ---
+    box_res = box_evaluator.compute()
+
+    # --- ВЫВОД РЕЗУЛЬТАТОВ ---
     mean_j = np.mean(video_j)
     mean_f = np.mean(video_f)
-    mean_h = np.mean(video_h)
-    mean_c = np.mean(video_c)
-    print("Tracking")
-    print(f"J Mean mIoU: {mean_j:.4f}")
-    print(f"F Mean Boundary F1: {mean_f:.4f}")
-    print(f"J&F {((mean_j + mean_f)/2):.4f}")
-    print(f"Mean Hausdorff distance: {mean_h:.2f}")
-    print(f"Mean Chamfer distance: {mean_c:.2f}")
-    
-    print("Segmentation")
-    mean_seg_j = np.mean(seg_j)
-    mean_seg_f = np.mean(seg_f)
-    mean_seg_h = np.mean(seg_h)
-    mean_seg_c = np.mean(seg_c)
-    print(f"J Mean mIoU: {mean_seg_j:.4f}")
-    print(f"F Mean Boundary F1: {mean_seg_f:.4f}")
-    print(f"J&F {((mean_seg_j + mean_seg_f)/2):.4f}")
-    print(f"Mean Hausdorff distance: {mean_seg_h:.2f}")
-    print(f"Mean Chamfer distance: {mean_seg_c:.2f}")
-    
-    
-    # mask = np.array(Image.open("images/00000.png"))
-    # print(np.unique(mask))
-    # gt_mask = np.array(cv2.imread("images/00000.png"))
-    # print(np.unique(gt_mask))
-    print("-" * 100)
-    i = np.array(cv2.imread("00000.png"))
-    im = mask_segmentation(i)
-    gray = cv2.cvtColor(i, cv2.COLOR_BGR2GRAY)
-    get_coordinates(i)
-    print(len(mask_map(im)))
-    im = painter_borders(i, gray)
-    cv2.imshow("imgg", im)
 
-    img_mask = np.array(cv2.imread("images/00000.png"))  # BGR
-    mask_segmentation(img_mask)
-    gray = cv2.cvtColor(img_mask, cv2.COLOR_BGR2GRAY)
-    print(get_filtered_bboxes(gray, min_area_ratio=0.001))
-    box = get_filtered_bboxes(gray, min_area_ratio=0.001)
+    print("\n" + "=" * 60)
+    print(f"{'BENCHMARK RESULTS':^60}")
+    print("=" * 60)
 
-    print("box", box)
+    print(f"\n{'- TRACKING: MASKS -':^60}")
+    print(f"  Mean mIoU (J)        : {mean_j:.4f}")
+    print(f"  Mean Boundary F1 (F) : {mean_f:.4f}")
+    print(f"  Global Score (J&F)   : {((mean_j + mean_f)/2):.4f}")
+    print(f"  Mean Hausdorff       : {np.mean(video_h):.2f}")
+    print(f"  Mean Chamfer         : {np.mean(video_c):.2f}")
+
+    print(f"\n{'- TRACKING: BOUNDING BOXES -':^60}")
+    if box_res["mean_iou"] > 0:
+        print(f"  Mean Box IoU         : {box_res['mean_iou']:.4f}")
+        print(f"  Mean Center Error    : {box_res['mean_dist']:.2f} px")
+        print(f"  Box F1 Score (@0.5)  : {box_res['f1']:.4f}")
+        print(f"    * Precision        : {box_res['precision']:.4f}")
+        print(f"    * Recall           : {box_res['recall']:.4f}")
+    else:
+        print("  No bounding boxes detected.")
+
+    print(f"\n{'- SEGMENTATION (INIT) -':^60}")
+    print(f"  Mean mIoU            : {np.mean(seg_j):.4f}")
+    print(f"  Mean Boundary F1     : {np.mean(seg_f):.4f}")
+    print(f"  Mean Hausdorff       : {np.mean(seg_h):.2f}")
+    print(f"  Mean Chamfer         : {np.mean(seg_c):.2f}")
+    print("=" * 60 + "\n")
+
+    # print("-" * 100)
+    # try:
+    #     i = np.array(cv2.imread("00000.png"))
+    #     if i is not None:
+    #         im = mask_segmentation(i)
+    #         gray = cv2.cvtColor(i, cv2.COLOR_BGR2GRAY)
+    #         get_coordinates(i)
+    #         print(len(mask_map(im)))
+    #         im = painter_borders(i, gray)
+    #         cv2.imshow("imgg", im)
+
+    #     img_mask = np.array(cv2.imread("images/00000.png"))
+    #     if img_mask is not None:
+    #         mask_segmentation(img_mask)
+    #         gray = cv2.cvtColor(img_mask, cv2.COLOR_BGR2GRAY)
+    #         print(get_filtered_bboxes(gray, min_area_ratio=0.001))
+    #         box = get_filtered_bboxes(gray, min_area_ratio=0.001)
+    #         print("box", box)
+    # except Exception:
+    #     pass
+
     # image = np.array(cv2.imread("images/00000.jpg"))
     # im = painter_borders(image, gray)
     # cv2.imshow("img", im)
@@ -232,39 +273,44 @@ def main():
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
-    mask = np.array(cv2.imread("images/cats_rac_test.png"))
-    print("Кошки ориг")
-    get_coordinates(mask)  # есть определённый порядок
-    c_mask = np.array(cv2.imread("images/cats_rac_sam.png"))
-    print("Кошки сам")
-    get_coordinates(c_mask)
-    print("----------")
-    gray = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
+    # try:
+    #     mask = np.array(cv2.imread("images/cats_rac_test.png"))
+    #     if mask is not None:
+    #         print("Кошки ориг")
+    #         get_coordinates(mask)
+    #         c_mask = np.array(cv2.imread("images/cats_rac_sam.png"))
+    #         print("Кошки сам")
+    #         get_coordinates(c_mask)
+    #         print("----------")
+    #         gray = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
 
-    # Последним идёт самая задняя кошка
-    for m in mask_map(gray):
-        # print(get_filtered_bboxes_xywh(m, min_area_ratio=0.001))
-        # print(get_filtered_bboxes(m, min_area_ratio=0.001))
-        print(getting_coordinates(m))
-    im = painter_borders(mask, gray)
-    cv2.imshow("img", im)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    #         for m in mask_map(gray):
+    #             print(getting_coordinates(m))
+    #         im = painter_borders(mask, gray)
+    #         cv2.imshow("img", im)
+    #         cv2.waitKey(0)
+    #         cv2.destroyAllWindows()
 
-    gt_mask = mask_segmentation(np.array(cv2.imread("images/cats_rac_test.png")))
-    pred_mask = mask_segmentation(np.array(cv2.imread("images/cats_rac_sam.png")))
+    #         gt_mask = mask_segmentation(
+    #             np.array(cv2.imread("images/cats_rac_test.png"))
+    #         )
+    #         pred_mask = mask_segmentation(
+    #             np.array(cv2.imread("images/cats_rac_sam.png"))
+    #         )
 
-    print("Уникальные значения в test:", np.unique(gt_mask))
-    print("Уникальные значения в sam:", np.unique(pred_mask))
+    #         print("Уникальные значения в test:", np.unique(gt_mask))
+    #         print("Уникальные значения в sam:", np.unique(pred_mask))
 
-    miou = compute_miou(pred_mask, gt_mask)
-    bf = compute_boundary_f1(pred_mask, gt_mask)
-    hausdorff = compute_contour_accuracy(pred_mask, gt_mask, metric="hausdorff")
-    chamfer = compute_contour_accuracy(pred_mask, gt_mask, metric="chamfer")
-    print(f"mIoU: {miou:.4f}")
-    print(f"Boundary F1: {bf:.4f}")
-    print(f"Hausdorff distance: {hausdorff:.2f}")
-    print(f"Chamfer distance: {chamfer:.2f}")
+    #         miou = compute_miou(pred_mask, gt_mask)
+    #         bf = compute_boundary_f1(pred_mask, gt_mask)
+    #         hausdorff = compute_contour_accuracy(pred_mask, gt_mask, metric="hausdorff")
+    #         chamfer = compute_contour_accuracy(pred_mask, gt_mask, metric="chamfer")
+    #         print(f"mIoU: {miou:.4f}")
+    #         print(f"Boundary F1: {bf:.4f}")
+    #         print(f"Hausdorff distance: {hausdorff:.2f}")
+    #         print(f"Chamfer distance: {chamfer:.2f}")
+    # except Exception:
+    #     pass
 
 
 if __name__ == "__main__":
